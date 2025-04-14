@@ -1,0 +1,15 @@
+version: '3'
+services:
+  server:
+    build:
+      context: ./server
+    ports:
+      - "8080:8080"
+
+  client:
+    build:
+      context: ./client
+    ports:
+      - "3000:3000"
+    environment:
+      - WDS_SOCKET_PORT=0
