@@ -91,13 +91,14 @@
             flagged-state (assoc state :board updated-board)]
         (update-score flagged-state x y player)))))
 
-(defn new-game
-  "Создаёт новое состояние игры с заданными параметрами"
-  [rows cols n-mines]
-  {:board (generate-board rows cols n-mines)
+(defn new-game [rows cols mines]
+  {:board (generate-board rows cols mines)
+   :revealed #{}
+   :flags #{}
    :scores {1 0, 2 0}
    :status :playing
-   :winner nil
-   :time-left 300}) 
+   :time-left 120
+   :players []})
+
 
 
