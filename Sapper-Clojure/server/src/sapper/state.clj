@@ -41,6 +41,7 @@
       (cond
         (= action "open") (alter game-state game/open-cell x y player)
         (= action "flag") (alter game-state game/toggle-flag x y player)
+        (= action "restart") (alter game-state game/new-game 20 20 40)
         :else nil)))
   (broadcast-state!))
 

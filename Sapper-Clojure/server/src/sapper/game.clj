@@ -1,24 +1,6 @@
 (ns sapper.game
   (:require [clojure.set :as set]))
 
-;; Генерация игрового поля
-(defn generate-board
-  "Создаёт поле rows x cols с количеством мин n-mines"
-  [rows cols n-mines]
-  (let [total-cells (* rows cols)
-        mine-positions (take n-mines (shuffle (range total-cells)))
-        mine? (fn [pos] (some #{pos} mine-positions))
-        to-pos (fn [x y] (+ (* x cols) y))]
-
-    (vec (for [x (range rows)]
-           (vec (for [y (range cols)]
-                  {:x x
-                   :y y
-                   :mine (mine? (to-pos x y))
-                   :adjacent 0
-                   :opened false
-                   :flagged false}))))))
-
 ;; Подсчёт мин вокруг клетки
 (defn count-adjacent-mines [board x y]
   (let [rows (count board)
@@ -26,11 +8,39 @@
         neighbors (for [dx [-1 0 1]
                         dy [-1 0 1]
                         :let [nx (+ x dx) ny (+ y dy)]
-                        :when (and (not= dx 0) (not= dy 0)
+                        :when (and (not (and (= dx 0) (= dy 0))) ; исключаем саму клетку
                                    (>= nx 0) (< nx rows)
                                    (>= ny 0) (< ny cols))]
                     (get-in board [nx ny]))]
     (count (filter :mine neighbors))))
+
+;; Генерация игрового поля
+(defn generate-board
+  [rows cols n-mines]
+  (let [total-cells (* rows cols)
+        mine-positions (set (take n-mines (shuffle (range total-cells))))
+        mine? #(contains? mine-positions %)
+        to-pos (fn [x y] (+ (* x cols) y))]
+
+    (let [initial-board
+          (vec (for [x (range rows)]
+                 (vec (for [y (range cols)]
+                        {:x x
+                         :y y
+                         :mine (mine? (to-pos x y))
+                         :adjacent 0
+                         :opened false
+                         :flagged false}))))
+
+          updated-board
+          (vec (for [x (range rows)]
+                 (vec (for [y (range cols)]
+                        (let [adj (count-adjacent-mines initial-board x y)]
+                          (assoc (get-in initial-board [x y]) :adjacent adj))))))]
+      updated-board)))
+
+
+
 
 ;; Проверка окончания игры
 (defn game-complete? [state]
@@ -80,3 +90,14 @@
             updated-board (assoc-in board [x y :flagged] flagged)
             flagged-state (assoc state :board updated-board)]
         (update-score flagged-state x y player)))))
+
+(defn new-game
+  "Создаёт новое состояние игры с заданными параметрами"
+  [rows cols n-mines]
+  {:board (generate-board rows cols n-mines)
+   :scores {1 0, 2 0}
+   :status :playing
+   :winner nil
+   :time-left 300}) 
+
+

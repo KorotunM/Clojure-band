@@ -61,3 +61,17 @@ body {
     align-items: center;
   }
   
+  .restart-button {
+    padding: 10px 20px;
+    background-color: #2f80ed;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    margin: 10px;
+  }
+  .restart-button:hover {
+    background-color: #1366d6;
+  }
+  

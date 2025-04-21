@@ -26,6 +26,12 @@ const App = () => {
     socket?.send(JSON.stringify({ action: "flag", x, y, player: 1 }));
   };
 
+  const handleRestart = () => {
+    socket?.send(JSON.stringify({ action: "restart" }));
+    localStorage.removeItem('sapper-state');
+  };
+  
+
   if (!gameState) return <div>Загрузка игры...</div>;
 
   return (
@@ -38,6 +44,7 @@ const App = () => {
         <div className="overlay">
           <h2>Игра окончена!</h2>
           <p>Победитель: Игрок {gameState.winner || '—'}</p>
+          <button onClick={handleRestart} className="restart-button">Начать заново</button>
         </div>
       )}
     </div>
