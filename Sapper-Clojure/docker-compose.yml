@@ -10,6 +10,6 @@ services:
     build:
       context: ./client
     ports:
-      - "3000:3000"
+      - "3000:80"
     environment:
       - WDS_SOCKET_PORT=0
