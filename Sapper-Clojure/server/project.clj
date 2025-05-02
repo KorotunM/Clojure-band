@@ -9,4 +9,5 @@
   :main sapper.core
   :target-path "target/%s"
   :resource-paths ["resources"]
-  :profiles {:uberjar {:aot :all}})
+  :profiles {:uberjar {:aot :all
+                       :uberjar-name "sapper.jar"}})
