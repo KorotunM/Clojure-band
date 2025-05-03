@@ -30,7 +30,8 @@
                          :mine (mine? (to-pos x y))
                          :adjacent 0
                          :opened false
-                         :flagged false}))))
+                         :flagged false
+                         :flagged-by nil}))))
 
           updated-board
           (vec (for [x (range rows)]
@@ -59,46 +60,84 @@
 
 ;; Проверка победителя по очкам
 (defn calculate-winner [state]
-  (let [{p1 1 p2 2} (:scores state)]
-    (cond
-      (> p1 p2) 1
-      (> p2 p1) 2
-      :else nil)))
+  (let [scores (:scores state)]
+    ;; если есть хотя бы один игрок – берём entry [id score] с максимальным score
+    (when (seq scores)
+      (key (apply max-key val scores)))))
 
 ;; Открытие клетки
 (defn open-cell [state x y player]
   (let [board (:board state)
-        cell (get-in board [x y])]
+        cell  (get-in board [x y])]
     (if (or (:opened cell) (:flagged cell))
       state
-      (let [adj (count-adjacent-mines board x y)
-            opened-board (assoc-in board [x y :opened] true)
+      (let [adj           (count-adjacent-mines board x y)
+            opened-board  (assoc-in board [x y :opened] true)
             updated-board (assoc-in opened-board [x y :adjacent] adj)
-            new-state (assoc state :board updated-board)]
+            new-state     (assoc state :board updated-board)]
         (cond
-          (:mine cell) (assoc new-state :status :ended :winner (if (= player 1) 2 1))
-          (game-complete? new-state) (assoc new-state :status :ended :winner (calculate-winner new-state))
-          :else new-state)))))
+           ;; Взрыв: отмечаем, кто подорвался, сбрасываем ему очки и завершаем
+            (:mine cell)
+              (-> new-state
+                  (assoc :status   :ended
+                         :winner   (calculate-winner new-state)
+                         :exploded player)
+                  (assoc :scores  (assoc (:scores new-state) player 0)))
+
+          ;; если открыли всё – аналогично
+          (game-complete? new-state)
+            (assoc new-state
+                   :status :ended
+                   :winner (calculate-winner new-state))
+
+          :else
+            new-state)))))
 
 ;; Установка/снятие флага
 (defn toggle-flag [state x y player]
   (let [board (:board state)
-        cell (get-in board [x y])]
-    (if (:opened cell)
+        cell  (get-in board [x y])
+        opened? (:opened cell)
+        owner   (:flagged-by cell)]
+    (cond
+      ;; Нельзя ставить/снимать флаг на уже открытой клетке
+      opened?
       state
-      (let [flagged (not (:flagged cell))
-            updated-board (assoc-in board [x y :flagged] flagged)
-            flagged-state (assoc state :board updated-board)]
-        (update-score flagged-state x y player)))))
 
-(defn new-game [rows cols mines]
-  {:board (generate-board rows cols mines)
-   :revealed #{}
-   :flags #{}
-   :scores {1 0, 2 0}
-   :status :playing
-   :time-left 120
-   :players []})
+      ;; Если флаг не стоит — ставим его от имени player
+      (nil? owner)
+      (let [updated-cell  (-> cell
+                              (assoc  :flagged true
+                                      :flagged-by player))
+            updated-board (assoc-in board [x y] updated-cell)
+            new-state     (assoc state :board updated-board)]
+        (update-score new-state x y player))
+
+      ;; Если флаг стоит и его автор — тот же игрок — снимаем
+      (= owner player)
+      (let [updated-cell  (-> cell
+                              (assoc :flagged false
+                                     :flagged-by nil))
+            updated-board (assoc-in board [x y] updated-cell)]
+        (assoc state :board updated-board))
+
+      ;; Если флаг стоит, но автор другой — игнорируем
+      :else
+      state)))
+
+(defn new-game
+  "rows cols mines, и список player-IDs"
+  ([rows cols mines players]
+   {:board     (generate-board rows cols mines)
+    :revealed  #{}
+    :flags     #{}
+    :scores    (into {} (map (fn [pid] [pid 0]) players))
+    :status    :playing
+    :time-left 120
+    :players   players})
+  ;; для обратной совместимости, если кто-то вызывает new-game без списка
+  ([rows cols mines]
+   (new-game rows cols mines [1 2])))
 
 
 

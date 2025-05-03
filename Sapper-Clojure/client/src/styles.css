@@ -74,4 +74,76 @@ body {
   .restart-button:hover {
     background-color: #1366d6;
   }
+
+
+  .lobby { 
+    text-align: center; 
+  }
+  .lobby-count {
+    margin: 5px 0 15px;
+    font-size: 18px;
+  }
+  .nick-input { 
+    margin-bottom: 10px; 
+  }
+  .nick-input-field {
+    font-size: 18px;
+  }
+  .nick-input-button {
+    font-size: 18px;
+    margin-left: 15px;
+    background-color: #c1d5f0;
+  }
+  .lobby-list { 
+    list-style: none;
+    padding: 0;
+    margin: 0 auto 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .lobby-list .self {
+     background: #d0f0c0;
+  }
+  .lobby-list li {
+    width: 200px;
+    margin: 5px 0;
+    padding: 8px;
+    border: 1px solid #888;
+    border-radius: 4px;
+  }
+  .ready-button {
+     margin-top: 10px; 
+     padding: 10px 20px;
+     font-size: 18px;
+     background-color: #c1d5f0;
+  }
+
+
+  .results-table {
+    margin: 20px auto;
+    border-collapse: collapse;
+  }
+  .results-table th,
+  .results-table td {
+    border: 1px solid #444;
+    padding: 8px 12px;
+  }
+  .results-table th {
+    background: #333;
+    color: white;
+  }
   
+  /* Подсветка своей строки в итогах */
+  .results-table tr.highlight {
+    background-color: #3e4697;
+  }
+  
+  .lobby-full {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    font-size: 24px;
+  }
