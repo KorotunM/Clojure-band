@@ -4,17 +4,17 @@ const Lobby = ({ socket, myId, players }) => {
   const [nick, setNick] = useState('');
 
   const count = Object.keys(players).length;
-  
+
   const changeNick = () => {
     socket.send(JSON.stringify({
-      type:    'lobby/set-nick',
+      type: 'lobby/set-nick',
       payload: nick
     }));
   };
 
   const toggleReady = () => {
     socket.send(JSON.stringify({
-      type:    'lobby/toggle-ready'
+      type: 'lobby/toggle-ready'
     }));
   };
 
@@ -34,11 +34,11 @@ const Lobby = ({ socket, myId, players }) => {
       <ul className="lobby-list">
         {Object.entries(players).map(([id, p]) => (
           <li key={id} className={id === myId ? 'self' : ''}>
-            {p.nick} {p.ready ? '✔️' : '❌'}
+            {p.nick}{' '}
+            {p.ready ? <span role="img" aria-label="Готов">✅</span> : <span role="img" aria-label="Не готов">❌</span>}
           </li>
         ))}
       </ul>
-
       <button className="ready-button" onClick={toggleReady}>
         Готов / Не готов
       </button>

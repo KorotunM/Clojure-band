@@ -1,149 +1,275 @@
 body {
-    font-family: sans-serif;
-    background: #eee;
-    margin: 0;
-    padding: 20px;
-    text-align: center;
-  }
-  
-  .app {
-    max-width: 700px;
-    margin: auto;
-  }
-  
-  .board {
-    display: grid;
-    grid-template-rows: repeat(20, 30px);
-    gap: 2px;
-  }
-  
-  .row {
-    display: grid;
-    grid-template-columns: repeat(20, 30px);
-  }
-  
-  .cell {
-    width: 30px;
-    height: 30px;
-    background: #ccc;
-    border: 1px solid #999;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    font-weight: bold;
-    user-select: none;
-  }
-  
-  .cell.open {
-    background: #eee;
-    cursor: default;
-  }
-  
-  .cell.open.mine {
-    background: red;
-  }
-  
-  .scoreboard, .timer {
-    margin: 10px 0;
-    font-size: 18px;
-  }
-  
-  .overlay {
-    background: rgba(0, 0, 0, 0.8);
-    color: white;
-    padding: 40px;
-    position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-  }
-  
-  .restart-button {
-    padding: 10px 20px;
-    background-color: #2f80ed;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    font-weight: bold;
-    margin: 10px;
-  }
-  .restart-button:hover {
-    background-color: #1366d6;
-  }
+  font-family: sans-serif;
+  background: #eee;
+  margin: 0;
+  padding: 20px;
+  text-align: center;
+}
+
+.app {
+  max-width: 700px;
+  margin: auto;
+}
+
+.board {
+  display: grid;
+  grid-template-rows: repeat(20, 30px);
+  gap: 2px;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.3);
+  /* Внутренняя тень */
+  background-image: linear-gradient(to bottom, #ddd, #fff);
+  /* Градиент */
+}
+
+.row {
+  display: grid;
+  grid-template-columns: repeat(20, 30px);
+}
+
+.cell {
+  width: 30px;
+  height: 30px;
+  background: #ccc;
+  border: 1px solid #999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-weight: bold;
+  user-select: none;
+  transition: transform 0.1s ease-in-out; /* Для эффекта открытия */
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2); /* Тень для каждой клетки */
+}
+
+.cell.open {
+  background: #eee;
+  cursor: default;
+  transform: scale(1.05); /* Легкое увеличение размера открытой клетки */
+  transition: transform 0.1s ease-in-out; /* Длительность перехода */
+}
+
+.cell.open.mine {
+  background: red;
+}
+
+.scoreboard,
+.timer {
+  margin: 10px 0;
+  font-size: 18px;
+}
+
+.overlay {
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 40px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.restart-button {
+  padding: 10px 20px;
+  background-color: #2f80ed;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+  margin: 10px;
+}
+
+.restart-button:hover {
+  background-color: #1366d6;
+}
 
 
-  .lobby { 
-    text-align: center; 
-  }
-  .lobby-count {
-    margin: 5px 0 15px;
-    font-size: 18px;
-  }
-  .nick-input { 
-    margin-bottom: 10px; 
-  }
-  .nick-input-field {
-    font-size: 18px;
-  }
-  .nick-input-button {
-    font-size: 18px;
-    margin-left: 15px;
-    background-color: #c1d5f0;
-  }
-  .lobby-list { 
-    list-style: none;
-    padding: 0;
-    margin: 0 auto 20px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-  .lobby-list .self {
-     background: #d0f0c0;
-  }
-  .lobby-list li {
-    width: 200px;
-    margin: 5px 0;
-    padding: 8px;
-    border: 1px solid #888;
-    border-radius: 4px;
-  }
-  .ready-button {
-     margin-top: 10px; 
-     padding: 10px 20px;
-     font-size: 18px;
-     background-color: #c1d5f0;
-  }
+.lobby {
+  text-align: center;
+}
+
+.lobby-count {
+  margin: 5px 0 15px;
+  font-size: 18px;
+}
+
+.nick-input {
+  margin-bottom: 10px;
+}
+
+.nick-input-field {
+  font-size: 18px;
+}
+
+.nick-input-button {
+  font-size: 18px;
+  margin-left: 15px;
+  background-color: #c1d5f0;
+}
+
+.lobby-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 auto 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.lobby-list .self {
+  background: #d0f0c0;
+}
+
+.lobby-list li {
+  width: 200px;
+  margin: 5px 0;
+  padding: 8px;
+  border: 1px solid #888;
+  border-radius: 4px;
+}
+
+.ready-button {
+  margin-top: 10px;
+  padding: 10px 20px;
+  font-size: 18px;
+  background-color: #c1d5f0;
+}
 
 
-  .results-table {
-    margin: 20px auto;
-    border-collapse: collapse;
+.results-table {
+  margin: 20px auto;
+  border-collapse: collapse;
+}
+
+.results-table th,
+.results-table td {
+  border: 1px solid #444;
+  padding: 8px 12px;
+}
+
+.results-table th {
+  background: #333;
+  color: white;
+}
+
+/* Подсветка своей строки в итогах */
+.results-table tr.highlight {
+  background-color: #3e4697;
+}
+
+.lobby-full {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  font-size: 24px;
+}
+
+.results-table tr.highlight {
+  animation: highlightRow 1s infinite alternate;
+}
+
+@keyframes highlightRow {
+  0% {
+    background-color: transparent;
   }
-  .results-table th,
-  .results-table td {
-    border: 1px solid #444;
-    padding: 8px 12px;
+  100% {
+    background-color: rgba(62, 70, 151, 0.3);
   }
-  .results-table th {
-    background: #333;
-    color: white;
+}
+
+.results-table th,
+.results-table td {
+  border: 1px solid #444;
+  padding: 8px 12px;
+  transition: all 0.3s ease;
+}
+
+.results-table th {
+  background: #333;
+  color: white;
+}
+
+.results-table tbody tr:nth-child(even) {
+  background-color: #fafafa;
+}
+
+.results-table tbody tr:hover {
+  background-color: #f0f0ff;
+}
+
+.app h1 {
+  font-size: 3rem;
+  letter-spacing: 2px;
+  color: #333;
+  text-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  background-image: linear-gradient(to right, #3e4697, #6a7bdc);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+.restart-button {
+  padding: 10px 20px;
+  background-color: #2f80ed;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+  margin: 10px;
+  transition: transform 0.1s ease-in-out;
+}
+
+.restart-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.nick-input-field:focus {
+  outline: none;
+  border-color: #2f80ed;
+  box-shadow: 0 0 10px rgba(47, 128, 237, 0.5);
+  transform: scaleX(1.05); /* Немного растянуть поле ввода */
+  transition: transform 0.1s ease-in-out;
+}
+
+.results-table tr {
+  transition: all 0.3s ease;
+}
+
+.results-table tr.highlight {
+  animation: rankAnimation 1s forwards;
+}
+
+@keyframes rankAnimation {
+  0% {
+    opacity: 0;
+    transform: translateY(-10px);
   }
-  
-  /* Подсветка своей строки в итогах */
-  .results-table tr.highlight {
-    background-color: #3e4697;
+  100% {
+    opacity: 1;
+    transform: translateY(0);
   }
-  
-  .lobby-full {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-    font-size: 24px;
-  }
+}
+
+.lobby button, .ready-button {
+  background-color: #c1d5f0;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 18px;
+  transition: transform 0.1s ease-in-out;
+}
+
+.lobby button:active, .ready-button:active {
+  transform: translateY(2px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
