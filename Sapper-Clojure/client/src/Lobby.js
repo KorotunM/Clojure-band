@@ -26,7 +26,7 @@ const Lobby = ({ socket, myId, players }) => {
           className="nick-input-field"
           value={nick}
           onChange={e => setNick(e.target.value)}
-          placeholder="Введите желаемый ник"
+          placeholder="Введите ник"
         />
         <button className="nick-input-button" onClick={changeNick}>OK</button>
       </div>

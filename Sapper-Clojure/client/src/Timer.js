@@ -5,7 +5,7 @@ const Timer = ({ timeLeft }) => {
   const seconds = (timeLeft % 60).toString().padStart(2, '0');
   return (
     <div className="timer">
-      ⏱ Время: {minutes}:{seconds}
+       Время: {minutes}:{seconds}
     </div>
   );
 };
