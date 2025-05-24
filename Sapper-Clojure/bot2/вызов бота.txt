@@ -1,0 +1,18 @@
+КЛИЕНТ
+M:
+cd M:\Git\Clojure-band\Sapper-Clojure\client
+npm start
+
+
+
+БОТ
+M:
+cd M:\Git\Clojure-band\Sapper-Clojure\bot2
+swipl bot.pl
+
+
+
+СЕРВЕР
+M:
+cd M:\Git\Clojure-band\Sapper-Clojure\server
+lein run

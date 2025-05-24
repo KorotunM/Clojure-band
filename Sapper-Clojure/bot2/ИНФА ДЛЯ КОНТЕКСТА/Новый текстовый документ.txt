@@ -1,0 +1,666 @@
+const initSocket = (onMessage) => {
+    const socket = new WebSocket("ws://localhost:8080/ws");
+  
+    socket.onopen = () => {
+      console.log("WebSocket подключён");
+    };
+  
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      onMessage(data);
+    };
+  
+    socket.onclose = () => {
+      console.log("WebSocket отключён");
+    };
+  
+    return socket;
+  };
+  
+  export default initSocket;
+  
+// src/App.js
+import React, { useEffect, useState } from 'react';
+import Lobby from './Lobby';
+import GameBoard from './GameBoard';
+import ScoreBoard from './ScoreBoard';
+import Timer from './Timer';
+import initSocket from './api';
+
+const App = () => {
+  const [socket, setSocket] = useState(null);
+  const [myId, setMyId] = useState(null);
+  const [inLobby, setInLobby] = useState(true);
+  const [lobbyPlayers, setLobbyPlayers] = useState({});
+  const [gameState, setGameState] = useState(null);
+
+
+  useEffect(() => {
+    const ws = initSocket();
+    setSocket(ws);
+    ws.onmessage = (evt) => {
+      const msg = JSON.parse(evt.data);
+      switch (msg.type) {
+        // Присвоили свой ID
+        case 'lobby/joined':
+          setMyId(msg.id);
+          break;
+
+        // Обновили состав лобби
+        case 'lobby/update':
+          setLobbyPlayers(msg.players);
+          break;
+
+        // Все готовы — старт игры
+        case 'game/start':
+          setInLobby(false);
+          break;
+
+        // Игровое состояние
+        case 'state':
+          setGameState(msg.state);
+          break;
+
+        case 'lobby/reset':
+          // принудительный возврат всех в лобби:
+          setInLobby(true);
+          setGameState(null);
+          break;
+
+        default:
+          console.warn('Неизвестный тип сообщения:', msg.type);
+      }
+    };
+    return () => ws.close();
+  }, []);
+
+  // игровые команды
+  const handleOpen = (x, y) => {
+    socket.send(JSON.stringify({
+      type: 'game/open',
+      payload: { x, y, player: myId }
+    }));
+  };
+
+  const handleFlag = (x, y) => {
+    socket.send(JSON.stringify({
+      type: 'game/flag',
+      payload: { x, y, player: myId }
+    }));
+  };
+
+  // при рестарте возвращаем UI в лобби
+  const handleRestart = () => {
+    socket.send(JSON.stringify({ type: 'game/restart' }));
+    // если вы хранили gameState в localStorage, тоже сбросьте его:
+    localStorage.removeItem('sapper-state');
+  };
+
+  // ранжирование по очкам: [ [id, score], ... ], сортировка по убыванию очков
+  const ranking = gameState
+    ? Object.entries(gameState.scores)
+      .sort(([idA, scoreA], [idB, scoreB]) => {
+        const explodedA = gameState.exploded === idA;
+        const explodedB = gameState.exploded === idB;
+        // сначала не‑взорвавшиеся (false) выше, взорвавшиеся (true) ниже
+        if (explodedA !== explodedB) {
+          return explodedA ? 1 : -1;
+        }
+        // если оба в одной категории — сортировка по убыванию очков
+        return scoreB - scoreA;
+      })
+    : [];
+
+  if (inLobby) {
+    return (
+      <Lobby
+        socket={socket}
+        myId={myId}
+        players={lobbyPlayers}
+      />
+    );
+  }
+
+  if (!gameState) {
+    return <div>Загрузка игры…</div>;
+  }
+
+  return (
+    <div className="app">
+      <h1>Сапёр: Королевская битва</h1>
+      <Timer timeLeft={gameState['time-left']} />
+      <ScoreBoard players={lobbyPlayers} scores={gameState.scores} />
+      <GameBoard board={gameState.board}
+        onOpen={handleOpen}
+        onFlag={handleFlag} />
+      {gameState.status === "ended" && (
+        <div className="overlay">
+          <h2>Игра окончена!</h2>
+          <table className="results-table">
+            <thead>
+              <tr><th>№</th><th>Игрок</th><th>Результат</th></tr>
+            </thead>
+            <tbody>
+              {ranking.map(([id, score], idx) => {
+                const nick = lobbyPlayers[id]?.nick || id;
+                const cell = (gameState.exploded === id)
+                  ? '💥'
+                  : score;
+                return (
+                  <tr key={id} className={id === myId ? 'highlight' : ''} >
+                    <td>{idx + 1}</td>
+                    <td>{nick}</td>
+                    <td>{cell}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <button onClick={handleRestart} className="restart-button">
+            Начать заново
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default App;
+
+import React from 'react';
+
+const Cell = ({ x, y, cell, onOpen, onFlag }) => {
+  const handleClick = () => onOpen(x, y);
+  const handleRightClick = (e) => {
+    e.preventDefault();
+    onFlag(x, y);
+  };
+
+  let className = 'cell';
+  let content = '';
+
+  if (cell.opened) {
+    className += ' open';
+    if (cell.mine) content = '💥';
+    else if (cell.adjacent > 0) content = cell.adjacent;
+  } else if (cell.flagged) {
+    content = '🚩';
+  }
+
+  return (
+    <div
+      className={className}
+      onClick={handleClick}
+      onContextMenu={handleRightClick}
+    >
+      {content}
+    </div>
+  );
+};
+
+export default Cell;
+
+(ns sapper.core
+  (:require
+    [org.httpkit.server :as http]
+    [compojure.core :refer [GET POST routes]]
+    [compojure.route :as route]
+    [ring.middleware.defaults :refer [wrap-defaults site-defaults]]
+    [sapper.ws :refer [ws-handler]]
+    [sapper.state :refer [init-game-state]])
+  (:gen-class))
+
+(defn app []
+  (routes
+    (GET "/ws" [] ws-handler) ; WebSocket endpoint
+    (route/resources "/")      ; отдача статики (build клиента)
+    (route/not-found "404 Not Found")))
+
+(defn -main [& args]
+  (println "Starting Sapper Game Server on port 8080...")
+  (init-game-state) ; инициализация состояния игры
+  (http/run-server (wrap-defaults (app) site-defaults) {:port 8080}))
+
+
+(ns sapper.game
+  (:require [clojure.set :as set]))
+
+;; Подсчёт мин вокруг клетки
+(defn count-adjacent-mines [board x y]
+  (let [rows (count board)
+        cols (count (first board))
+        neighbors (for [dx [-1 0 1]
+                        dy [-1 0 1]
+                        :let [nx (+ x dx) ny (+ y dy)]
+                        :when (and (not (and (= dx 0) (= dy 0))) ; исключаем саму клетку
+                                   (>= nx 0) (< nx rows)
+                                   (>= ny 0) (< ny cols))]
+                    (get-in board [nx ny]))]
+    (count (filter :mine neighbors))))
+
+;; Генерация игрового поля
+(defn generate-board
+  [rows cols n-mines]
+  (let [total-cells (* rows cols)
+        mine-positions (set (take n-mines (shuffle (range total-cells))))
+        mine? #(contains? mine-positions %)
+        to-pos (fn [x y] (+ (* x cols) y))]
+
+    (let [initial-board
+          (vec (for [x (range rows)]
+                 (vec (for [y (range cols)]
+                        {:x x
+                         :y y
+                         :mine (mine? (to-pos x y))
+                         :adjacent 0
+                         :opened false
+                         :flagged false
+                         :flagged-by nil}))))
+
+          updated-board
+          (vec (for [x (range rows)]
+                 (vec (for [y (range cols)]
+                        (let [adj (count-adjacent-mines initial-board x y)]
+                          (assoc (get-in initial-board [x y]) :adjacent adj))))))]
+      updated-board)))
+
+
+
+
+;; Проверка окончания игры
+(defn game-complete? [state]
+  (let [board (:board state)
+        all-cells (apply concat board)
+        unopened (filter #(not (:opened %)) all-cells)
+        all-mines (every? :mine unopened)]
+    all-mines))
+
+;; Подсчёт очков игрока
+(defn update-score [state x y player]
+  (let [cell (get-in (:board state) [x y])]
+    (if (and (:flagged cell) (:mine cell))
+      (update-in state [:scores player] inc)
+      state)))
+
+;; Проверка победителя по очкам
+(defn calculate-winner [state]
+  (let [scores (:scores state)]
+    ;; если есть хотя бы один игрок – берём entry [id score] с максимальным score
+    (when (seq scores)
+      (key (apply max-key val scores)))))
+
+;; Открытие клетки
+(defn open-cell [state x y player]
+  (let [board (:board state)
+        cell  (get-in board [x y])]
+    (if (or (:opened cell) (:flagged cell))
+      state
+      (let [adj           (count-adjacent-mines board x y)
+            opened-board  (assoc-in board [x y :opened] true)
+            updated-board (assoc-in opened-board [x y :adjacent] adj)
+            new-state     (assoc state :board updated-board)]
+        (cond
+           ;; Взрыв: отмечаем, кто подорвался, сбрасываем ему очки и завершаем
+            (:mine cell)
+              (-> new-state
+                  (assoc :status   :ended
+                         :winner   (calculate-winner new-state)
+                         :exploded player)
+                  (assoc :scores  (assoc (:scores new-state) player 0)))
+
+          ;; если открыли всё – аналогично
+          (game-complete? new-state)
+            (assoc new-state
+                   :status :ended
+                   :winner (calculate-winner new-state))
+
+          :else
+            new-state)))))
+
+;; Установка/снятие флага
+(defn toggle-flag [state x y player]
+  (let [board (:board state)
+        cell  (get-in board [x y])
+        opened? (:opened cell)
+        owner   (:flagged-by cell)]
+    (cond
+      ;; Нельзя ставить/снимать флаг на уже открытой клетке
+      opened?
+      state
+
+      ;; Если флаг не стоит — ставим его от имени player
+      (nil? owner)
+      (let [updated-cell  (-> cell
+                              (assoc  :flagged true
+                                      :flagged-by player))
+            updated-board (assoc-in board [x y] updated-cell)
+            new-state     (assoc state :board updated-board)]
+        (update-score new-state x y player))
+
+      ;; Если флаг стоит и его автор — тот же игрок — снимаем
+      (= owner player)
+      (let [updated-cell  (-> cell
+                              (assoc :flagged false
+                                     :flagged-by nil))
+            updated-board (assoc-in board [x y] updated-cell)]
+        (assoc state :board updated-board))
+
+      ;; Если флаг стоит, но автор другой — игнорируем
+      :else
+      state)))
+
+(defn new-game
+  "rows cols mines, и список player-IDs"
+  ([rows cols mines players]
+   {:board     (generate-board rows cols mines)
+    :revealed  #{}
+    :flags     #{}
+    :scores    (into {} (map (fn [pid] [pid 0]) players))
+    :status    :playing
+    :time-left 120
+    :players   players})
+  ;; для обратной совместимости, если кто-то вызывает new-game без списка
+  ([rows cols mines]
+   (new-game rows cols mines [1 2])))
+
+
+
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import './styles.css';
+import App from './App';
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+
+
+
+import React, { useState } from 'react';
+
+const Lobby = ({ socket, myId, players }) => {
+  const [nick, setNick] = useState('');
+
+  const count = Object.keys(players).length;
+
+  const changeNick = () => {
+    socket.send(JSON.stringify({
+      type: 'lobby/set-nick',
+      payload: nick
+    }));
+  };
+
+  const toggleReady = () => {
+    socket.send(JSON.stringify({
+      type: 'lobby/toggle-ready'
+    }));
+  };
+
+  return (
+    <div className="lobby">
+      <h1>Игровое лобби</h1>
+      <div className="nick-input">
+        <input
+          className="nick-input-field"
+          value={nick}
+          onChange={e => setNick(e.target.value)}
+          placeholder="Введите ник"
+        />
+        <button className="nick-input-button" onClick={changeNick}>OK</button>
+      </div>
+      <h2 className="lobby-count">Игроков: {count}</h2>
+      <ul className="lobby-list">
+        {Object.entries(players).map(([id, p]) => (
+          <li key={id} className={id === myId ? 'self' : ''}>
+            {p.nick}{' '}
+            {p.ready ? <span role="img" aria-label="Готов">✅</span> : <span role="img" aria-label="Не готов">❌</span>}
+          </li>
+        ))}
+      </ul>
+      <button className="ready-button" onClick={toggleReady}>
+        Готов / Не готов
+      </button>
+    </div>
+  );
+};
+
+export default Lobby;
+
+
+(defproject sapper "0.1.0-SNAPSHOT"
+  :description "Multiplayer Sapper Game on Clojure Server"
+  :dependencies [[org.clojure/clojure "1.11.1"]
+                 [http-kit "2.7.0"]
+                 [compojure "1.7.0"]
+                 [cheshire "5.11.0"]
+                 [org.clojure/core.async "1.6.681"]
+                 [ring/ring-defaults "0.3.4"]]   ; ← ЭТО ВАЖНО
+  :main sapper.core
+  :target-path "target/%s"
+  :resource-paths ["resources"]
+  :profiles {:uberjar {:aot :all
+                       :uberjar-name "sapper.jar"}})
+
+
+
+(ns sapper.state
+  (:require
+  [clojure.core.async :refer [chan go-loop <! timeout alt! close!]]
+   [cheshire.core :as json]
+   [org.httpkit.server :as http]
+   [sapper.game :as game]))
+
+
+;; Общее состояние игры
+(def game-state (ref {}))
+
+;; Список клиентов (WebSocket соединений)
+(def clients (atom #{}))
+
+;; Канал для обработки событий от игроков
+(def event-chan (chan))
+
+;; канал‑сигнал для лобби: channel -> player-id
+(def client-ids (atom {}))
+
+;; собственно состояние лобби: player-id -> {:nick string :ready boolean}
+(defonce lobby-state (atom {}))
+
+; канал‑сигнал для остановки таймера
+(defonce exit-ch (atom nil))
+
+;; для нумерации новых игроков
+(defonce join-counter (atom 0))
+
+;; отсановка таймера
+(defn stop-timer! []
+  (when-let [ch @exit-ch]
+    (close! ch)))
+
+;; добавляет нового игрока в лобби
+(defn add-player! [player-id]
+  (swap! lobby-state assoc player-id {:nick player-id :ready false}))
+
+;; удаляет игрока из лобби
+(defn remove-player! [player-id]
+  (swap! lobby-state dissoc player-id))
+
+;; устанавливает ник игрока
+(defn set-player-nick! [player-id nick]
+  (swap! lobby-state assoc-in [player-id :nick] nick))
+
+;; переключает готовность
+(defn toggle-player-ready! [player-id]
+  (swap! lobby-state update-in [player-id :ready] not))
+
+;; раздать всем клиентам текущее лобби
+(defn broadcast-lobby! []
+  (let [msg (json/generate-string {:type    "lobby/update"
+                                   :players @lobby-state})]
+    (doseq [ch @clients]
+      (http/send! ch msg))))
+
+(defn broadcast-state! []
+  (let [msg       {:type  "state"
+                   :state @game-state}
+        json-msg (json/generate-string msg)]
+    (doseq [client @clients]
+      (http/send! client json-msg))))
+
+;; Запуск цикла таймера, который каждую секунду уменьшает time-left
+(defn start-timer! []
+  (let [ch (chan)]
+    (reset! exit-ch ch)
+    (go-loop []
+      (alt!
+        ch ([_])
+        (timeout 1000) ([_]
+          (dosync
+            (when (pos? (:time-left @game-state))
+              (alter game-state update :time-left dec)))
+          (broadcast-state!)
+          (if (pos? (:time-left @game-state))
+            (recur)
+            (do
+              (dosync
+                (alter game-state
+                       assoc
+                       :status :ended
+                       :winner (game/calculate-winner @game-state)))
+              (broadcast-state!))))))))
+
+(defn init-game-state []
+  (let [pids (keys @lobby-state)]
+    (dosync
+      (ref-set game-state
+        (game/new-game 20 20 40 pids)))
+    (broadcast-state!)
+    (start-timer!)))
+
+(defn handle-game-event [event]
+  (let [{t :type{:keys [x y player]} :payload} event]
+    (dosync
+      (case t
+        "game/open"
+          (alter game-state game/open-cell x y player)
+        "game/flag"
+          (alter game-state game/toggle-flag x y player)
+        "game/restart"
+          (do
+            (stop-timer!)
+            (init-game-state))
+        nil)))
+  ;; если игра закончилась — останавливаем таймер
+  (when (= (:status @game-state) :ended)
+    (stop-timer!))
+  (broadcast-state!))
+
+;; Обработчик событий из event-chan
+(go-loop []
+  (when-let [event (<! event-chan)]
+    (handle-game-event event)
+    (recur)))
+
+(defn try-start-game! []
+  (let [ps (vals @lobby-state)
+        ready-count (count (filter :ready ps))]
+    (when (and (not (:started? @game-state)) ; если ещё не играем
+               (>= (count ps) 2)
+               (= ready-count (count ps)))
+      ;; инициализируем состояние игры и раскатываем это всем
+      (stop-timer!)
+      (init-game-state)
+      (let [msg (json/generate-string {:type "game/start"})]
+        (doseq [ch @clients]
+          (http/send! ch msg))))))
+
+
+
+(ns sapper.ws
+  (:require
+   [org.httpkit.server :as http]
+   [cheshire.core :as json]
+   [clojure.core.async :refer [put!]]
+   [sapper.state :refer [clients client-ids
+                         add-player! remove-player!
+                         set-player-nick! toggle-player-ready!
+                         broadcast-lobby! broadcast-state! try-start-game!
+                         event-chan lobby-state broadcast-lobby! join-counter]]))
+
+(defn ws-handler [req]
+  (http/with-channel req channel
+    ;; 1) генерируем уникальный player-id и порядковый номер для ника
+    (let [player-id    (str (hash channel))
+          num          (swap! join-counter inc)
+          default-nick (str "игрок-" num)]
+      ;; 2) сохраняем канал и id
+      (swap! clients conj channel)
+      (swap! client-ids assoc channel player-id)
+
+      ;; 3) добавляем в лобби и сразу даём дружелюбный ник
+      (add-player! player-id)
+      (set-player-nick! player-id default-nick)
+
+      ;; 4) шлём только что присоединившемуся его id
+      (http/send! channel
+        (json/generate-string {:type "lobby/joined" :id player-id}))
+
+      ;; 5) обновляем у всех список лобби и (если нужно) текущее игровое состояние
+      (broadcast-lobby!)
+      (broadcast-state!)
+
+      ;; 6) при дисконнекте удаляем игрока
+      (http/on-close channel
+        (fn [_]
+          (let [pid (@client-ids channel)]
+            (remove-player! pid)
+            (swap! clients disj channel)
+            (swap! client-ids dissoc channel)
+            (broadcast-lobby!))))
+
+      ;; 7) на все входящие сообщения
+      (http/on-receive channel
+        (fn [raw]
+          (let [{type    :type
+                 payload :payload} (json/parse-string raw true)
+                pid (@client-ids channel)]
+            (case type
+              ;; лобби‑события
+              "lobby/set-nick"
+                (do (set-player-nick! pid payload)
+                  (broadcast-lobby!))
+              "lobby/toggle-ready"
+                (do (toggle-player-ready! pid)
+                  (broadcast-lobby!)
+                  (when (try-start-game!)))
+              ;; игровые события
+              "game/open"
+                (put! event-chan {:type type :payload payload})
+              "game/flag"
+                (put! event-chan {:type type :payload payload})
+              "game/restart"
+                (do
+                  ;; сброс готовности и уведомление клиентов
+                  (swap! lobby-state
+                    (fn [l]
+                      (into {}
+                        (map (fn [[k v]]
+                              [k (assoc v :ready false)])
+                          l))))
+                  (broadcast-lobby!)
+                  (doseq [ch @clients]
+                    (http/send! ch
+                      (json/generate-string {:type "lobby/reset"}))))
+              (println "Unknown message type:" type))))))))
+
+
+
+
+
+
+
+
+

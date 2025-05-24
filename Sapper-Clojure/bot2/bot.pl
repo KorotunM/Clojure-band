@@ -1,0 +1,160 @@
+:- use_module(library(http/websocket)).
+:- use_module(library(http/json)).
+:- use_module(library(random)).
+:- use_module(library(lists)).
+:- use_module(library(system)).
+
+% Конфигурация бота
+:- dynamic bot_config/2.
+bot_config(server, "ws://localhost:8080/ws").
+bot_config(delay, 1). % Задержка между ходами в секундах
+bot_config(nick_prefix, "prolog-bot").
+
+% Состояние игры
+:- dynamic game_state/6. % game_state(Width, Height, Board, Scores, TimeLeft, Status)
+:- dynamic lobby_state/2. % lobby_state(Players, MyId)
+:- dynamic stats/3. % stats(GamesPlayed, CellsOpened, FlagsPlaced)
+
+% Инициализация статистики
+init_stats :-
+    retractall(stats(_, _, _)),
+    assertz(stats(0, 0, 0)).
+
+% Главный цикл бота
+start_bot :-
+    init_stats,
+    random(1, 10000, RandomNum),
+    atom_concat('prolog-bot-', RandomNum, Nick),
+    retractall(bot_config(nick, _)),
+    assertz(bot_config(nick, Nick)),
+    connect_to_server.
+
+% Подключение к серверу
+connect_to_server :-
+    bot_config(server, Server),
+    http_open_websocket(Server, WebSocket, []),
+    retractall(bot_config(websocket, _)),
+    assertz(bot_config(websocket, WebSocket)),
+    thread_create(websocket_receive_loop(WebSocket), _),
+    send_nickname(WebSocket),
+    send_ready(WebSocket).
+
+% Цикл получения сообщений
+websocket_receive_loop(WebSocket) :-
+    websocket_receive(WebSocket, Message, [format(json)]),
+    process_websocket_message(Message),
+    websocket_receive_loop(WebSocket).
+
+process_websocket_message(Message) :-
+    (   Message = json(Dict)
+    ->  process_message(Dict)
+    ;   format('Received non-JSON message: ~w~n', [Message])
+    ).
+
+% Отправка ника
+send_nickname(WebSocket) :-
+    bot_config(nick, Nick),
+    Dict = _{type:"lobby/set-nick", payload:Nick},
+    atom_json_dict(Json, Dict, []),
+    websocket_send(WebSocket, Json),
+    format('Sent nickname: ~w~n', [Nick]).
+
+% Отправка готовности
+send_ready(WebSocket) :-
+    Dict = _{type:"lobby/toggle-ready", payload:null},
+    atom_json_dict(Json, Dict, []),
+    websocket_send(WebSocket, Json),
+    writeln('Sent ready status').
+
+% Обработка различных типов сообщений
+process_message(_{type:"lobby/joined", id:MyId}) :-
+    retractall(lobby_state(_, _)),
+    assertz(lobby_state(_{}, MyId)),
+    format('Joined lobby with ID: ~w~n', [MyId]).
+
+process_message(_{type:"lobby/update", players:Players}) :-
+    lobby_state(_, MyId),
+    retractall(lobby_state(_, _)),
+    assertz(lobby_state(Players, MyId)),
+    format('Lobby updated: ~w players~n', [dict_size(Players)]).
+
+process_message(_{type:"game/start"}) :-
+    writeln('Game started!'),
+    retractall(game_state(_, _, _, _, _, _)).
+
+process_message(_{type:"state", state:State}) :-
+    update_game_state(State).
+
+process_message(_{type:"lobby/reset"}) :-
+    writeln('Game reset, sending ready...'),
+    bot_config(websocket, WebSocket),
+    send_ready(WebSocket).
+
+% Обновление состояния игры
+update_game_state(State) :-
+    Board = State.get(board),
+    length(Board, Height),
+    (Height > 0 -> nth0(0, Board, FirstRow), length(FirstRow, Width) ; Width = 0),
+    (   game_state(_, _, _, _, _, _)
+    ->  retractall(game_state(_, _, _, _, _, _))
+    ;   true
+    ),
+    assertz(game_state(Width, Height, Board, State.get(scores), State.get('time-left'), State.get(status))),
+    (   State.get(status) == "ended"
+    ->  stats(Games, Cells, Flags),
+        NewGames is Games + 1,
+        retractall(stats(_, _, _)),
+        assertz(stats(NewGames, Cells, Flags)),
+        format('Game ended. Stats: games=~w, cells=~w, flags=~w~n', [NewGames, Cells, Flags]),
+        send_restart
+    ;   bot_config(delay, Delay),
+        sleep(Delay),
+        make_move
+    ).
+
+% Отправка команды на рестарт
+send_restart :-
+    bot_config(websocket, WebSocket),
+    Dict = _{type:"game/restart", payload:null},
+    atom_json_dict(Json, Dict, []),
+    websocket_send(WebSocket, Json),
+    writeln('Sent restart command').
+
+% Сделать ход
+make_move :-
+    game_state(Width, Height, Board, _, _, _),
+    findall((X, Y), (
+        between(0, Height-1, X),
+        between(0, Width-1, Y),
+        nth0(X, Board, Row),
+        nth0(Y, Row, Cell),
+        \+ get_dict(opened, Cell, true),
+        \+ get_dict(flagged, Cell, true)
+    ), UnknownCells),
+    (   UnknownCells = [_|_]
+    ->  random_member((X, Y), UnknownCells),
+        send_open(X, Y),
+        stats(Games, Cells, Flags),
+        NewCells is Cells + 1,
+        retractall(stats(_, _, _)),
+        assertz(stats(Games, NewCells, Flags))
+    ;   writeln('No unknown cells left!')
+    ).
+
+% Отправка команды открытия клетки
+send_open(X, Y) :-
+    lobby_state(_, MyId),
+    bot_config(websocket, WebSocket),
+    Dict = _{type:"game/open", payload:_{x:X, y:Y, player:MyId}},
+    atom_json_dict(Json, Dict, []),
+    websocket_send(WebSocket, Json),
+    format('Opening cell at (~w, ~w)~n', [X, Y]).
+
+% Переподключение при разрыве соединения
+reconnect :-
+    writeln('Connection lost, reconnecting...'),
+    sleep(5),
+    connect_to_server.
+
+% Запуск бота
+:- initialization(start_bot).
